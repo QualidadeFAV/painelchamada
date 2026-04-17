@@ -1,4 +1,4 @@
-# 🔊 Leitor de Fichas Hospitalar
+# 🔊 Leitor de Fichas Hospitalares
 
 Extensão Chrome para leitura automática de fichas e senhas hospitalares com voz natural em português brasileiro.
 
