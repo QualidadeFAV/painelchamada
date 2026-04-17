@@ -6,7 +6,204 @@ let ultimoTextoLido = "";
 let estaFalando = false;
 let vozPortuguesa = null; // SEMPRE será uma voz pt-BR ou pt-PT (NUNCA outra língua)
 
+// ===== CONTROLES DE QUALIDADE =====
+let volumeAtual = 1.0;
+let velocidadeAtual = 0.85;
+let extensaoAtiva = true;
+let prefixoAtual = 'FICHA';
+
+// Carrega valores salvos do chrome.storage
+chrome.storage.local.get(['leitor_volume', 'leitor_velocidade', 'leitor_ativo', 'leitor_prefixo'], (result) => {
+  volumeAtual = (result.leitor_volume || 100) / 100;
+  velocidadeAtual = (result.leitor_velocidade || 85) / 100;
+  extensaoAtiva = result.leitor_ativo !== undefined ? result.leitor_ativo : true;
+  prefixoAtual = result.leitor_prefixo || 'FICHA';
+  console.log(`%c[Leitor] 🎚️ Volume: ${(volumeAtual * 100).toFixed(0)}% | Velocidade: ${(velocidadeAtual * 100).toFixed(0)}% | Prefixo: "${prefixoAtual}" | ${extensaoAtiva ? 'ATIVA' : 'INATIVA'}`, "color: white; background: #3498db; font-size: 12px; padding: 5px;");
+});
+
 console.log("%c[Leitor] 🔊 Extensão iniciada - áudio automático", "color: white; background: #27ae60; font-size: 14px; padding: 5px; font-weight: bold;");
+
+// ===== MAPEAMENTO DE TELA =====
+let modoMapeamento = false;
+let areaCustomizada = null; // {x1, y1, x2, y2}
+let overlayMapeamento = null;
+let canvas = null;
+let ctx = null;
+let pontoInicial = null;
+
+// ===== LISTENER PARA MENSAGENS DO POPUP =====
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.tipo === 'atualizar_volume') {
+    volumeAtual = request.valor;
+    console.log(`%c[Popup] 🔊 Volume atualizado: ${(volumeAtual * 100).toFixed(0)}%`, "background: #f39c12; color: white;");
+  } else if (request.tipo === 'atualizar_velocidade') {
+    velocidadeAtual = request.valor;
+    console.log(`%c[Popup] ⚡ Velocidade atualizada: ${(velocidadeAtual * 100).toFixed(0)}%`, "background: #f39c12; color: white;");
+  } else if (request.tipo === 'extensao_ativa') {
+    extensaoAtiva = request.valor;
+    ultimoTextoLido = ''; // Limpa cache para ler novamente ao reativar
+    console.log(`%c[Popup] 🔊 Extensão ${extensaoAtiva ? 'ATIVADA' : 'DESATIVADA'}`, "background: " + (extensaoAtiva ? '#27ae60' : '#c0392b') + "; color: white;");
+  } else if (request.tipo === 'alterar_prefixo') {
+    prefixoAtual = request.valor;
+    console.log(`%c[Popup] 📝 Prefixo alterado para: "${prefixoAtual}"`, "background: #3498db; color: white;");
+  } else if (request.tipo === 'ativar_mapeamento') {
+    ativarModoMapeamento();
+  } else if (request.tipo === 'desativar_mapeamento') {
+    desativarModoMapeamento();
+  }
+});
+
+// ===== FUNÇÕES DE MAPEAMENTO =====
+
+function ativarModoMapeamento() {
+  modoMapeamento = true;
+  console.log("%c[Mapeamento] 📍 Modo de seleção ATIVADO - arraste para desenhar retângulo", "background: #8e44ad; color: #fff; font-size: 12px; font-weight: bold;");
+  
+  // Criar overlay
+  overlayMapeamento = document.createElement('div');
+  overlayMapeamento.id = 'leitor-overlay-mapeamento';
+  overlayMapeamento.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    cursor: crosshair;
+    z-index: 999999;
+  `;
+  
+  // Criar canvas para desenhar
+  canvas = document.createElement('canvas');
+  canvas.id = 'leitor-canvas-mapeamento';
+  canvas.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000000;
+    cursor: crosshair;
+  `;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  
+  ctx = canvas.getContext('2d');
+  
+  document.body.appendChild(overlayMapeamento);
+  document.body.appendChild(canvas);
+  
+  // Event listeners para desenho
+  canvas.addEventListener('mousedown', iniciarSelecao);
+  canvas.addEventListener('mousemove', desenharSelecao);
+  canvas.addEventListener('mouseup', finalizarSelecao);
+  canvas.addEventListener('mouseleave', cancelarSelecao);
+}
+
+function iniciarSelecao(e) {
+  pontoInicial = { x: e.clientX, y: e.clientY };
+}
+
+function desenharSelecao(e) {
+  if (!pontoInicial) return;
+  
+  // Limpar canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Desenhar retângulo
+  const x1 = pontoInicial.x;
+  const y1 = pontoInicial.y;
+  const x2 = e.clientX;
+  const y2 = e.clientY;
+  
+  // Calcular dimensões
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
+  
+  // Desenhar retângulo verde com borda
+  ctx.fillStyle = 'rgba(0, 255, 0, 0.1)';
+  ctx.fillRect(x, y, width, height);
+  
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, width, height);
+  
+  // Desenhar cantos
+  const tamanhoCorner = 8;
+  ctx.fillStyle = '#00ff00';
+  // Canto superior esquerdo
+  ctx.fillRect(x - tamanhoCorner/2, y - tamanhoCorner/2, tamanhoCorner, tamanhoCorner);
+  // Canto superior direito
+  ctx.fillRect(x + width - tamanhoCorner/2, y - tamanhoCorner/2, tamanhoCorner, tamanhoCorner);
+  // Canto inferior esquerdo
+  ctx.fillRect(x - tamanhoCorner/2, y + height - tamanhoCorner/2, tamanhoCorner, tamanhoCorner);
+  // Canto inferior direito
+  ctx.fillRect(x + width - tamanhoCorner/2, y + height - tamanhoCorner/2, tamanhoCorner, tamanhoCorner);
+}
+
+function finalizarSelecao(e) {
+  if (!pontoInicial) return;
+  
+  const x1 = pontoInicial.x;
+  const y1 = pontoInicial.y;
+  const x2 = e.clientX;
+  const y2 = e.clientY;
+  
+  // Normalizar coordenadas
+  areaCustomizada = {
+    x1: Math.min(x1, x2),
+    y1: Math.min(y1, y2),
+    x2: Math.max(x1, x2),
+    y2: Math.max(y1, y2)
+  };
+  
+  console.log(`%c[Mapeamento] ✅ Área selecionada: (${areaCustomizada.x1}, ${areaCustomizada.y1}) → (${areaCustomizada.x2}, ${areaCustomizada.y2})`, "background: #27ae60; color: white; font-size: 11px;");
+  
+  // Salvar no storage
+  chrome.storage.local.set({ leitor_area_mapeada: areaCustomizada });
+  
+  // Limpar mapeamento
+  desativarModoMapeamento();
+  
+  pontoInicial = null;
+}
+
+function cancelarSelecao() {
+  pontoInicial = null;
+  if (ctx) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+function desativarModoMapeamento() {
+  modoMapeamento = false;
+  pontoInicial = null;
+  
+  if (canvas) {
+    canvas.removeEventListener('mousedown', iniciarSelecao);
+    canvas.removeEventListener('mousemove', desenharSelecao);
+    canvas.removeEventListener('mouseup', finalizarSelecao);
+    canvas.removeEventListener('mouseleave', cancelarSelecao);
+    canvas.remove();
+    canvas = null;
+    ctx = null;
+  }
+  
+  if (overlayMapeamento) {
+    overlayMapeamento.remove();
+    overlayMapeamento = null;
+  }
+  
+  console.log("%c[Mapeamento] 🔄 Modo de seleção DESATIVADO - retornando ao centro da tela", "background: #8e44ad; color: #fff; font-size: 12px;");
+}
+
+// Carregar área customizada do storage ao iniciar
+chrome.storage.local.get('leitor_area_mapeada', (result) => {
+  if (result.leitor_area_mapeada) {
+    areaCustomizada = result.leitor_area_mapeada;
+    console.log(`%c[Mapeamento] 📍 Área customizada carregada: (${areaCustomizada.x1}, ${areaCustomizada.y1}) → (${areaCustomizada.x2}, ${areaCustomizada.y2})`, "background: #8e44ad; color: white; font-size: 11px;");
+  }
+});
 
 // ==================== SELEÇÃO DE VOZ ====================
 
@@ -166,6 +363,11 @@ function converterNumerosEmDezenas(texto) {
 function falar(texto) {
   const synth = window.speechSynthesis;
 
+  // *** SE EXTENSÃO ESTÁ DESATIVADA, NÃO FALA ***
+  if (!extensaoAtiva) {
+    return;
+  }
+
   // Re-busca voz se perdeu (Chrome pode resetar vozes)
   if (!vozPortuguesa || !vozPortuguesa.lang || !vozPortuguesa.lang.toLowerCase().startsWith('pt')) {
     vozPortuguesa = buscarVozPortuguesa();
@@ -180,37 +382,34 @@ function falar(texto) {
   }
 
   texto = converterNumerosEmDezenas(texto);
-  texto = "FICHA, " + texto;
+  texto = prefixoAtual + ", " + texto;
 
   estaFalando = true;
 
-  // Cancela qualquer fala anterior
+  // Cancela qualquer fala anterior (imediato - sem delay)
   synth.cancel();
 
-  // Pequeno delay após cancel (workaround bug Chrome que mistura vozes)
-  setTimeout(() => {
-    const fala = new SpeechSynthesisUtterance(texto);
+  const fala = new SpeechSynthesisUtterance(texto);
 
-    // FORÇA voz portuguesa explícita (NUNCA depende do lang sozinho)
-    fala.voice = vozPortuguesa;
-    fala.lang = 'pt-BR'; // ⭐ FORÇA SEMPRE pt-BR (não usa lang da voz)
-    fala.rate = 0.85;
-    fala.pitch = 1.0;
-    fala.volume = 1.0;
+  // FORÇA voz portuguesa explícita (NUNCA depende do lang sozinho)
+  fala.voice = vozPortuguesa;
+  fala.lang = 'pt-BR'; // ⭐ FORÇA SEMPRE pt-BR (não usa lang da voz)
+  fala.rate = velocidadeAtual;
+  fala.pitch = 1.0;
+  fala.volume = volumeAtual;
 
-    console.log(`%c[Fala] 🗣️ "${texto}" → ${vozPortuguesa.name} [PT-BR FORÇADO]`, "background: #3498db; color: white; font-size: 10px;");
+  console.log(`%c[Fala] 🗣️ "${texto}" → ${vozPortuguesa.name} [PT-BR FORÇADO]`, "background: #3498db; color: white; font-size: 10px;");
 
-    fala.onend = () => {
-      estaFalando = false;
-    };
+  fala.onend = () => {
+    estaFalando = false;
+  };
 
-    fala.onerror = (e) => {
-      estaFalando = false;
-      console.error(`%c[Fala] ❌ ${e.error}`, "background: #c0392b; color: white;");
-    };
+  fala.onerror = (e) => {
+    estaFalando = false;
+    console.error(`%c[Fala] ❌ ${e.error}`, "background: #c0392b; color: white;");
+  };
 
-    synth.speak(fala);
-  }, 50); // 50ms delay pós-cancel
+  synth.speak(fala);
 }
 
 // ==================== LEITURA DO CENTRO DA TELA ====================
@@ -218,8 +417,18 @@ function falar(texto) {
 function lerCentroDaTela() {
   if (estaFalando) return;
 
-  const x = window.innerWidth / 2;
-  const y = window.innerHeight / 2;
+  let x, y;
+
+  // Se há área customizada, usar ponto dentro dela
+  if (areaCustomizada) {
+    x = (areaCustomizada.x1 + areaCustomizada.x2) / 2;
+    y = (areaCustomizada.y1 + areaCustomizada.y2) / 2;
+  } else {
+    // Caso contrário, usar centro da tela
+    x = window.innerWidth / 2;
+    y = window.innerHeight / 2;
+  }
+
   const elemento = document.elementFromPoint(x, y);
 
   if (!elemento || elemento === document.body || elemento === document.documentElement) return;
@@ -238,7 +447,8 @@ function lerCentroDaTela() {
   if (textoAtual.length < 2) return;
 
   if (textoAtual !== ultimoTextoLido) {
-    console.log(`%c[Centro] 📋 Nova senha: ${textoAtual}`, "background: #27ae60; color: white; font-size: 12px; font-weight: bold;");
+    const local = areaCustomizada ? '📍 [área customizada]' : '📍 [centro da tela]';
+    console.log(`%c[Leitura] ${local} Nova senha: ${textoAtual}`, "background: #27ae60; color: white; font-size: 12px; font-weight: bold;");
     ultimoTextoLido = textoAtual;
     falar(textoAtual);
   }
@@ -261,7 +471,7 @@ function iniciar() {
 
   setInterval(() => {
     if (!estaFalando) lerCentroDaTela();
-  }, 2000);
+  }, 1000); // ⚡ Reduzido para 1 segundo (mais responsivo)
 
   window.addEventListener('scroll', () => {
     if (!estaFalando) lerCentroDaTela();
