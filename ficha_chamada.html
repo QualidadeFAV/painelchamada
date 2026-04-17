@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ficha de Chamada</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .titulo {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .display {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-size: 120px;
+            font-weight: bold;
+            padding: 60px 80px;
+            border-radius: 15px;
+            margin-bottom: 40px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 15px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3) inset;
+            min-width: 400px;
+        }
+
+        .botao {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .botao:hover {
+            background: #764ba2;
+            transform: scale(1.05);
+        }
+
+        .botao:active {
+            transform: scale(0.98);
+        }
+
+        .info {
+            color: #666;
+            margin-top: 30px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="titulo">🏥 FICHA DE CHAMADA</div>
+        <div class="display" id="display">MV0000</div>
+        <button class="botao" onclick="gerarNovaSenha()">🔄 PRÓXIMA SENHA</button>
+        <div class="info">
+            <p>Clique no botão ou pressione ESPAÇO para gerar uma nova senha</p>
+        </div>
+    </div>
+
+    <script>
+        function gerarNovaSenha() {
+            // Sempre "00" nos primeiros 2 números + 2 dígitos aleatórios (00 a 99)
+            const digitos = '00' + String(Math.floor(Math.random() * 100)).padStart(2, '0');
+            const senha = 'MV' + digitos;
+            
+            // Atualiza o display
+            document.getElementById('display').textContent = senha;
+            
+            console.log(`Nova senha: ${senha}`);
+        }
+
+        // Permite usar também a tecla ESPAÇO
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') {
+                event.preventDefault();
+                gerarNovaSenha();
+            }
+        });
+
+        // Gera uma senha inicial ao carregar
+        gerarNovaSenha();
+    </script>
+</body>
+</html>
